@@ -1,0 +1,18 @@
+services:
+  subtitle-desk:
+    build: .
+    image: subtitle-desk:latest
+    container_name: subtitle-desk
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - subtitle-data:/app/data
+    environment:
+      PORT: "8080"
+      # 上传文件大小上限（MB）
+      MAX_UPLOAD_MB: "2048"
+      TZ: "Asia/Shanghai"
+
+volumes:
+  subtitle-data:

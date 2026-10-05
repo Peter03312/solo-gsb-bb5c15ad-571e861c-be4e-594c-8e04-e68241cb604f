@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Subtitle Desk · 字幕校对台</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <h1>🎬 Subtitle Desk <span class="subtitle">小团队字幕校对台</span></h1>
+  </header>
+
+  <main id="app"></main>
+
+  <!-- 编辑片段弹窗 -->
+  <div id="editorModal" class="modal hidden">
+    <div class="modal-card">
+      <h3 id="editorTitle">编辑片段</h3>
+      <p class="meta">片段 #<span id="editorId"></span> ｜ 所见修订号 <b id="editorRevision"></b>
+        <span id="editorReviewNote" class="warn hidden">（已审；保存修改将撤销审校状态）</span></p>
+      <div class="form-row">
+        <label>起点 (ms)
+          <input id="editStart" type="number" min="0" step="1" />
+        </label>
+        <button type="button" class="btn small" id="editStartNow">取播放位置</button>
+        <label>终点 (ms)
+          <input id="editEnd" type="number" min="1" step="1" />
+        </label>
+        <button type="button" class="btn small" id="editEndNow">取播放位置</button>
+      </div>
+      <label class="block">字幕文本
+        <textarea id="editText" rows="4"></textarea>
+      </label>
+      <p id="editorError" class="error"></p>
+      <div class="modal-actions">
+        <button type="button" class="btn ghost" id="editorCancel">取消（保留原稿）</button>
+        <button type="button" class="btn primary" id="editorSave">保存修改</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 拆分片段弹窗 -->
+  <div id="splitModal" class="modal hidden">
+    <div class="modal-card">
+      <h3>拆分片段（长字幕一分为二）</h3>
+      <p class="meta">片段 #<span id="splitSegId"></span> ｜ 时间 <b id="splitRange"></b> ｜ 所见修订号 <b id="splitRevision"></b><span id="splitTrRevWrap" class="hidden"> ｜ 译文修订号 <b id="splitTrRevision"></b></span></p>
+      <p class="meta">在严格位于起止之间的整数毫秒切点处拆分：左段保留原片段 ID（修订号 +1），右段获新 ID（修订号从 1 开始）；
+        两段均转<b>待审</b>，既有质检放行失效（历史理由保留），历史发布版本及其 SRT 不受影响。</p>
+      <label class="block">当前原文（只读）
+        <pre id="splitSource" class="tr-source"></pre>
+      </label>
+      <label class="block hidden" id="splitTrCurrentWrap">当前译文（只读；拆分后的左右译文均不得与它相同）
+        <pre id="splitTrSource" class="tr-source"></pre>
+      </label>
+      <div class="form-row">
+        <label>切点 (ms，严格位于起止之间)
+          <input id="splitCut" type="number" step="1" />
+        </label>
+        <button type="button" class="btn small" id="splitCutNow">取播放位置</button>
+      </div>
+      <label class="block">左段原文（起点 → 切点，非空）
+        <textarea id="splitLeftText" rows="3"></textarea>
+      </label>
+      <label class="block">右段原文（切点 → 终点，非空）
+        <textarea id="splitRightText" rows="3"></textarea>
+      </label>
+      <div id="splitTrInputs" class="hidden">
+        <p class="meta">译文轨道（<b id="splitTrLang"></b>）：须同时提交左右两段<b>非空译文</b>，不能丢弃或直接复制原译文。</p>
+        <label class="block">左段译文
+          <textarea id="splitLeftTr" rows="3" placeholder="按左段原文重新翻译…"></textarea>
+        </label>
+        <label class="block">右段译文
+          <textarea id="splitRightTr" rows="3" placeholder="按右段原文重新翻译…"></textarea>
+        </label>
+      </div>
+      <p id="splitError" class="error"></p>
+      <div class="modal-actions">
+        <button type="button" class="btn ghost" id="splitCancel">取消（保留原稿）</button>
+        <button type="button" class="btn primary" id="splitSave">确认拆分</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 冲突弹窗 -->
+  <div id="conflictModal" class="modal hidden">
+    <div class="modal-card">
+      <h3>⚠️ 修订冲突</h3>
+      <p id="conflictMessage" class="error"></p>
+      <p class="meta">他人修改后的当前内容（修订号 <b id="conflictRevision"></b>）：</p>
+      <div class="conflict-current">
+        <p><span class="tag" id="conflictTime"></span>
+           <span class="tag ok hidden" id="conflictReviewed">已审</span>
+           <span class="tag warn hidden" id="conflictNotReviewed">待审</span></p>
+        <pre id="conflictText"></pre>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn ghost" id="conflictDiscard">放弃我的修改，使用当前内容</button>
+        <button type="button" class="btn primary" id="conflictReload">基于当前内容重新编辑</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- SRT 导入弹窗 -->
+  <div id="importModal" class="modal hidden">
+    <div class="modal-card wide">
+      <h3>导入本地 SRT 到草稿</h3>
+      <p class="meta">导入的片段一律为<b>待审</b>状态；已发布版本及其 SRT 不会受影响。
+        先预览解析结果与时间冲突，再选择「追加到草稿」或「替换整个草稿」。</p>
+      <div class="form-row">
+        <label>SRT 文件（UTF-8，可含 BOM）
+          <input type="file" id="importFile" accept=".srt,text/plain" />
+        </label>
+        <button type="button" class="btn primary" id="importPreviewBtn">解析并预览</button>
+      </div>
+      <p id="importFileMsg" class="meta"></p>
+      <p id="importError" class="error"></p>
+
+      <div id="importResult" class="hidden">
+        <p class="meta" id="importSummary"></p>
+        <div id="importConflictBox" class="conflict-box hidden">
+          <b>⚠️ 与当前草稿的时间冲突</b>
+          <ul id="importConflictList"></ul>
+          <p class="warn">存在冲突时「追加到草稿」不可用；可先调整已有片段，或选择「替换整个草稿」。</p>
+        </div>
+        <div class="import-scroll">
+          <table class="seg-table">
+            <thead><tr><th>条目</th><th>SRT 序号</th><th>原文件行号</th><th>时间</th><th>文本</th></tr></thead>
+            <tbody id="importTbody"></tbody>
+          </table>
+          <p class="meta hidden" id="importMoreHint"></p>
+        </div>
+      </div>
+
+      <div class="modal-actions">
+        <button type="button" class="btn ghost" id="importCancel">取消</button>
+        <button type="button" class="btn danger" id="importReplaceBtn" disabled>替换整个草稿（先删除现有草稿片段）</button>
+        <button type="button" class="btn primary" id="importAppendBtn" disabled>追加到草稿</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 历史版本区间恢复弹窗 -->
+  <div id="restoreModal" class="modal hidden">
+    <div class="modal-card wide">
+      <h3>从历史发布版本恢复区间</h3>
+      <p class="meta">选择历史版本与整数毫秒区间（起点早于终点、均在视频时长内，且边界不得穿过任一侧片段，端点相接允许）。
+        确认后：区间内的草稿片段被移除，以该版本区间内的片段整体替换；恢复片段为<b>待审</b>新片段（修订号从 1 开始），
+        区间外草稿片段及其修订号、历史发布版本均不受影响。</p>
+      <div class="form-row">
+        <label>历史发布版本
+          <select id="restoreVersion"></select>
+        </label>
+        <label>区间起点 (ms)
+          <input id="restoreStart" type="number" min="0" step="1" />
+        </label>
+        <label>区间终点 (ms)
+          <input id="restoreEnd" type="number" min="1" step="1" />
+        </label>
+        <button type="button" class="btn primary" id="restorePreviewBtn">预览恢复</button>
+      </div>
+      <p id="restoreError" class="error"></p>
+
+      <div id="restoreResult" class="hidden">
+        <p class="meta" id="restoreSummary"></p>
+        <div class="restore-compare">
+          <div>
+            <h4 id="restorePubTitle">发布快照（区间内）</h4>
+            <div class="import-scroll">
+              <table class="seg-table">
+                <thead><tr><th>快照条目</th><th>时间</th><th>文本</th></tr></thead>
+                <tbody id="restorePubTbody"></tbody>
+              </table>
+            </div>
+          </div>
+          <div>
+            <h4>当前草稿（区间内，确认后移除）</h4>
+            <div class="import-scroll">
+              <table class="seg-table">
+                <thead><tr><th>#</th><th>时间</th><th>文本</th><th>状态</th></tr></thead>
+                <tbody id="restoreDraftTbody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-actions">
+        <button type="button" class="btn ghost" id="restoreCancel">取消</button>
+        <button type="button" class="btn primary" id="restoreConfirmBtn" disabled>确认恢复</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 多片段整体平移弹窗 -->
+  <div id="shiftModal" class="modal hidden">
+    <div class="modal-card wide">
+      <h3>整体平移所选片段（校准字幕时间）</h3>
+      <p class="meta">已勾选 <b id="shiftSelCount">0</b> 个片段，它们将统一加上同一个毫秒偏移，<b>相对间距保持不变</b>（端点相接允许）。
+        确认后：所选原文片段逐段修订号 +1 并<b>撤销原文审校</b>；其译文保留文字但标记为<b>已失效</b>，须按新时间重新校对；
+        未选片段不动。任一所选片段越过视频边界或与未选片段重叠都会拒绝且不写入；历史发布版本及其 SRT 不受影响。</p>
+      <div class="form-row">
+        <label>偏移 (ms，非零整数；正数延后，负数提前)
+          <input id="shiftOffset" type="number" step="1" placeholder="例如 -250 或 500" />
+        </label>
+        <button type="button" class="btn primary" id="shiftPreviewBtn">预览平移</button>
+      </div>
+      <p id="shiftError" class="error"></p>
+
+      <div id="shiftResult" class="hidden">
+        <p class="meta" id="shiftSummary"></p>
+        <div id="shiftIssueBox" class="conflict-box hidden">
+          <b>⚠️ 平移被阻止（存在越界或重叠）</b>
+          <ul id="shiftIssueList"></ul>
+          <p class="warn">请调整勾选范围或偏移后重新预览；存在问题时无法确认。</p>
+        </div>
+        <div class="import-scroll">
+          <table class="seg-table">
+            <thead><tr><th>#</th><th>调整前时间</th><th>调整后时间</th><th>文本</th><th>状态</th></tr></thead>
+            <tbody id="shiftTbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="modal-actions">
+        <button type="button" class="btn ghost" id="shiftCancel">取消</button>
+        <button type="button" class="btn primary" id="shiftConfirmBtn" disabled>确认一次性应用</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 译文编辑弹窗 -->
+  <div id="trModal" class="modal hidden">
+    <div class="modal-card">
+      <h3 id="trTitle">录入译文</h3>
+      <p class="meta">片段 #<span id="trSegId"></span> ｜ 所见原文修订号 <b id="trSegRev"></b> ｜ 译文修订号 <b id="trRev"></b>
+        <span id="trStaleNote" class="warn hidden">（原文已变更，译文已失效；请按当前原文重新校对）</span>
+        <span id="trReviewNote" class="warn hidden">（译文已审；保存修改将撤销译文审校状态）</span></p>
+      <label class="block">当前原文（只读）
+        <pre id="trSource" class="tr-source"></pre>
+      </label>
+      <label class="block">译文（<span id="trLang"></span>）
+        <textarea id="trText" rows="4" placeholder="输入该段原文的译文…"></textarea>
+      </label>
+      <p id="trError" class="error"></p>
+      <div class="modal-actions">
+        <button type="button" class="btn ghost" id="trCancel">取消</button>
+        <button type="button" class="btn primary" id="trSave">保存译文</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast hidden"></div>
+
+  <!-- 质检放行弹窗 -->
+  <div id="qcWaiverModal" class="modal hidden">
+    <div class="modal-card">
+      <h3>填写放行理由</h3>
+      <p class="meta">片段 #<span id="qcWaiverSegId"></span> ｜ 轨道 <b id="qcWaiverTrack"></b> ｜ 项目 <b id="qcWaiverRule"></b>
+        ｜ 实测 <b id="qcWaiverValue"></b> ／ 阈值 <b id="qcWaiverThreshold"></b></p>
+      <p class="warn" id="qcWaiverBindNote">放行绑定该片段的时间、文本、轨道语言与当前阈值；任一变化后放行自动失效，但理由会保留在历史中。</p>
+      <label class="block">放行理由（必填，最多 500 字）
+        <textarea id="qcWaiverReason" rows="3" placeholder="例如：片头快语速，已人工逐字校对确认"></textarea>
+      </label>
+      <p id="qcWaiverError" class="error"></p>
+      <div class="modal-actions">
+        <button type="button" class="btn ghost" id="qcWaiverCancel">取消</button>
+        <button type="button" class="btn primary" id="qcWaiverSave">确认放行</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 已发布版本质检快照弹窗 -->
+  <div id="qcPubModal" class="modal hidden">
+    <div class="modal-card wide">
+      <h3 id="qcPubTitle">发布版本质检快照</h3>
+      <p class="meta" id="qcPubMeta"></p>
+      <div class="import-scroll" id="qcPubBody"></div>
+      <div class="modal-actions">
+        <button type="button" class="btn primary" id="qcPubClose">关闭</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>

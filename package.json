@@ -1,0 +1,19 @@
+{
+  "name": "subtitle-desk",
+  "version": "1.0.0",
+  "description": "小团队视频字幕校对平台：时间轴编辑、乐观锁修订、审校与发布、SRT 导出",
+  "type": "commonjs",
+  "main": "server.js",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "test": "node test/api.test.js"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.8.1",
+    "express": "^4.21.2",
+    "multer": "^1.4.5-lts.1"
+  }
+}
