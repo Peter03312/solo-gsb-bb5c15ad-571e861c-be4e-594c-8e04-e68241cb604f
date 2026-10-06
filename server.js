@@ -10,7 +10,14 @@ const PORT = Number(process.env.PORT || 8080);
 const HOST = process.env.HOST || '0.0.0.0';
 const DB_PATH = process.env.DB_PATH || path.join(__dirname, 'data', 'app.db');
 
-init(DB_PATH);
+// 数据库结构升级失败（含旧库迁移失败）时不得启动：
+// 失败版本已回滚，但数据库可能处于未完成的升级状态，服务不得继续提供请求
+try {
+  init(DB_PATH);
+} catch (err) {
+  console.error(`[启动中止] ${err.message}`);
+  process.exit(1);
+}
 
 const app = express();
 app.use(express.json({ limit: '2mb' }));
