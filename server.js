@@ -2,7 +2,7 @@
 
 const express = require('express');
 const path = require('path');
-const { init } = require('./src/db');
+const { init, isReady } = require('./src/db');
 const { ApiError } = require('./src/validation');
 const apiRouter = require('./src/routes');
 
@@ -10,10 +10,27 @@ const PORT = Number(process.env.PORT || 8080);
 const HOST = process.env.HOST || '0.0.0.0';
 const DB_PATH = process.env.DB_PATH || path.join(__dirname, 'data', 'app.db');
 
-init(DB_PATH);
+// 顺序执行版本化结构升级。任一升级失败都会抛出：该版本结构与登记已随事务回滚，
+// 此处记录并以非零码退出，不进入 app.listen —— 服务不会以未完成升级的库对外提供请求。
+try {
+  init(DB_PATH);
+} catch (err) {
+  console.error('[fatal] 数据库升级失败，服务中止启动：');
+  console.error(err);
+  process.exit(1);
+}
 
 const app = express();
 app.use(express.json({ limit: '2mb' }));
+
+// 防御性门禁：仅当全部结构升级完成（init 成功即满足）才放行 API
+app.use('/api', (req, res, next) => {
+  if (!isReady()) {
+    res.status(503).json({ error: { code: 'db_unavailable', message: '数据库升级尚未完成，服务暂不可用' } });
+    return;
+  }
+  next();
+});
 app.use('/api', apiRouter);
 app.use(express.static(path.join(__dirname, 'public')));
 
